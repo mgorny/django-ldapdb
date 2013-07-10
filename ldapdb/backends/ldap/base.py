@@ -88,6 +88,16 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def _cursor(self):
         self.connection = ldap.initialize(self.settings_dict['NAME'])
+
+        try:
+            for opt, value in self.settings_dict['CONNECTION_OPTIONS'].items():
+                self.connection.set_option(opt, value)
+        except KeyError:
+            pass
+
+        if self.settings_dict['TLS']:
+            self.connection.start_tls_s()
+
         self.connection.simple_bind_s(
             self.settings_dict['USER'],
             self.settings_dict['PASSWORD'])
