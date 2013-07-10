@@ -95,7 +95,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         except KeyError:
             pass
 
-        if self.settings_dict['TLS']:
+        if self.settings_dict.get('TLS', False):
             self.connection.start_tls_s()
 
         self.connection.simple_bind_s(
