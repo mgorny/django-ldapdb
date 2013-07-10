@@ -87,11 +87,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         pass
 
     def _cursor(self):
-        if self.connection is None:
-            self.connection = ldap.initialize(self.settings_dict['NAME'])
-            self.connection.simple_bind_s(
-                self.settings_dict['USER'],
-                self.settings_dict['PASSWORD'])
+        self.connection = ldap.initialize(self.settings_dict['NAME'])
+        self.connection.simple_bind_s(
+            self.settings_dict['USER'],
+            self.settings_dict['PASSWORD'])
         return DatabaseCursor(self.connection)
 
     def _rollback(self):
