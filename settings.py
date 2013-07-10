@@ -23,6 +23,7 @@ DATABASES = {
         'NAME': 'ldap://',
         'USER': 'cn=admin,dc=nodomain',
         'PASSWORD': 'test',
+        'TLS': False,
     }
 }
 DATABASE_ROUTERS = ['ldapdb.router.Router']
