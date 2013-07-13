@@ -48,8 +48,8 @@ def get_lookup_operator(lookup_type):
 def query_as_ldap(query):
     filterstr = ''.join(['(objectClass=%s)' % cls for cls in query.model.object_classes])
     sql, params = where_as_ldap(query.where)
-    filterstr = '(&(|%s)%s)' % (filterstr, sql)
-    return filterstr
+    filterstr += sql
+    return '(&%s)' % filterstr
 
 def where_as_ldap(self):
     bits = []
