@@ -32,6 +32,8 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+import datetime
+
 from django.db.models import fields, SubfieldBase
 
 from ldapdb import escape_ldap_filter
@@ -188,3 +190,39 @@ class ACLField(fields.Field):
         if lookup_type == 'exact':
             return escape_ldap_filter(self._group())
         raise TypeError("ACLField has invalid lookup: %s" % lookup_type)
+
+class DateField(fields.Field):
+    """ A text field containing date, in specified format.
+        The format can be specified as 'format' argument, as strptime()
+        format string. It defaults to ISO8601 (%Y-%m-%d). """
+
+    def __init__(self, *args, **kwargs):
+        if 'format' in kwargs:
+            self._date_format = kwargs.pop('format')
+        else:
+            self._date_format = '%Y-%m-%d'
+        super(DateField, self).__init__(self, *args, **kwargs)
+
+    def from_ldap(self, value, connection):
+        if len(value) == 0:
+            return None
+        else:
+            return datetime.datetime.strptime(value[0], self._date_format).date()
+
+    def get_db_prep_lookup(self, lookup_type, value, connection, prepared=False):
+        "Returns field's value prepared for database lookup."
+        return [self.get_prep_lookup(lookup_type, value)]
+
+    def get_db_prep_save(self, value, connection):
+        if not isinstance(value, datetime.date) \
+                and not isinstance(value, datetime.datetime):
+            raise ValueError('DateField can be only set to a datetime.date instance')
+
+        return [value.strftime(self._date_format)]
+
+    def get_prep_lookup(self, lookup_type, value):
+        "Perform preliminary non-db specific lookup checks and conversions"
+        # TODO: other lookups?
+        if lookup_type in ('exact',):
+            return value
+        raise TypeError("IntegerField has invalid lookup: %s" % lookup_type)
