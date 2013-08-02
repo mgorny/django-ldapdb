@@ -22,7 +22,7 @@ DATABASES = {
     },
     'ldap': {
         'ENGINE': 'ldapdb.backends.ldap',
-        'NAME': 'ldap://',
+        'NAME': 'ldap://localhost',
         'USER': 'cn=admin,dc=nodomain',
         'PASSWORD': 'test',
         'TLS': False,
