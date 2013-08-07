@@ -60,7 +60,6 @@ class WhereTestCase(TestCase):
         self.mockldap.stop()
 
     def test_escape(self):
-        self.assertEquals(self.ldapobj.methods_called(), ['initialize'])
         self.assertEquals(escape_ldap_filter(u'fôöbàr'), u'fôöbàr')
         self.assertEquals(escape_ldap_filter('foo*bar'), 'foo\\2abar')
         self.assertEquals(escape_ldap_filter('foo(bar'), 'foo\\28bar')
