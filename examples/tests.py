@@ -1,25 +1,25 @@
 # -*- coding: utf-8 -*-
-# 
+#
 # django-ldapdb
 # Copyright (c) 2009-2011, Bolloré telecom
 # All rights reserved.
-# 
+#
 # See AUTHORS file for a full list of contributors.
-# 
+#
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
-# 
-#     1. Redistributions of source code must retain the above copyright notice, 
+#
+#     1. Redistributions of source code must retain the above copyright notice,
 #        this list of conditions and the following disclaimer.
-#     
-#     2. Redistributions in binary form must reproduce the above copyright 
+#
+#     2. Redistributions in binary form must reproduce the above copyright
 #        notice, this list of conditions and the following disclaimer in the
 #        documentation and/or other materials provided with the distribution.
-# 
+#
 #     3. Neither the name of Bolloré telecom nor the names of its contributors
 #        may be used to endorse or promote products derived from this software
 #        without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 # ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -132,7 +132,7 @@ class GroupTestCase(BaseTestCase):
         # single exclusion
         qs = LdapGroup.objects.exclude(name='foogroup')
         self.assertEquals(query_as_ldap(qs.query), '(&(objectClass=posixGroup)(!(cn=foogroup)))')
-        
+
         qs = LdapGroup.objects.filter(~Q(name='foogroup'))
         self.assertEquals(query_as_ldap(qs.query), '(&(objectClass=posixGroup)(!(cn=foogroup)))')
 
@@ -174,14 +174,14 @@ class GroupTestCase(BaseTestCase):
         self.assertRaises(LdapGroup.DoesNotExist, LdapGroup.objects.get, name='does_not_exist')
 
     def test_order_by(self):
-        # ascending name 
+        # ascending name
         qs = LdapGroup.objects.order_by('name')
         self.assertEquals(len(qs), 3)
         self.assertEquals(qs[0].name, 'bargroup')
         self.assertEquals(qs[1].name, 'foogroup')
         self.assertEquals(qs[2].name, 'wizgroup')
 
-        # descending name 
+        # descending name
         qs = LdapGroup.objects.order_by('-name')
         self.assertEquals(len(qs), 3)
         self.assertEquals(qs[0].name, 'wizgroup')
@@ -326,7 +326,7 @@ class UserTestCase(BaseTestCase):
         u = LdapUser.objects.get(username='foouser')
         u.first_name = u'Fôo2'
         u.save()
-        
+
         # make sure DN gets updated if we change the pk
         u.username = 'foouser2'
         u.save()
