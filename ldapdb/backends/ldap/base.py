@@ -131,3 +131,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             output.append((dn.decode(self.charset), attrs))
         return output
 
+    def unbind(self):
+        cursor = self._cursor()
+        return cursor.connection.unbind()
