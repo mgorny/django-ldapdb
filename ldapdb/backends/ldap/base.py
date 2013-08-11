@@ -123,9 +123,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         cursor = self._cursor()
         return cursor.connection.rename_s(dn.encode(self.charset), newrdn.encode(self.charset))
 
-    def search_s(self, base, scope, filterstr='(objectClass=*)',attrlist=None):
+    def search_s(self, base, scope, filterstr='(objectClass=*)', attrlist=None):
         cursor = self._cursor()
-        results = cursor.connection.search_s(base, scope, filterstr.encode(self.charset), attrlist)
+        results = cursor.connection.search_s(base, scope, filterstr.encode(self.charset))
         output = []
         for dn, attrs in results:
             output.append((dn.decode(self.charset), attrs))
