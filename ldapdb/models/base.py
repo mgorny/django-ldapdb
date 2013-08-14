@@ -33,6 +33,7 @@
 #
 
 
+from django.conf import settings
 from django.db import connections, router
 from django.db.models import signals
 
@@ -40,6 +41,7 @@ from ldapdb import _LDAPDBConfig
 
 import django.db.models
 
+import copy
 import ldap
 
 
@@ -54,6 +56,7 @@ class Model(django.db.models.base.Model):
 
     # meta-data
     base_dn = None
+    bound_alias = None
     search_scope = ldap.SCOPE_SUBTREE
     object_classes = ['top']
 
@@ -65,8 +68,34 @@ class Model(django.db.models.base.Model):
         """
         Get the proper LDAP connection.
         """
-        using = using or router.db_for_write(self.__class__, instance=self)
+        using = (using or self.bound_alias
+                 or router.db_for_write(self.__class__, instance=self))
         return connections[using]
+
+    def bind_as(self, alias, dn=None, password=None):
+        """
+        Return the database object using connection bound to another
+        LDAP user (defaults to self).
+
+        Alias specifies the database alias to use. If the database does
+        not exist, a new one will be created. If dn is provided,
+        the new connection will use that DN. Otherwise, it will be bound
+        to self.build_dn().
+        """
+        if alias not in settings.DATABASES:
+            base_alias = router.db_for_write(self.__class__,
+                                             instance=self)
+            if dn is None:
+                dn = self.build_dn()
+
+            new_db = copy.deepcopy(settings.DATABASES[base_alias])
+            new_db['USER'] = dn
+            new_db['PASSWORD'] = password or ''
+            settings.DATABASES[alias] = new_db
+
+        ret = copy.deepcopy(self)
+        ret.bound_alias = alias
+        return ret
 
     @classmethod
     def build_rdn(self, **keys):
