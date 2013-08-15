@@ -39,6 +39,8 @@ from django.db.models import signals
 
 from ldapdb import _LDAPDBConfig
 
+from functools import partial, wraps
+
 import django.db.models
 
 import copy
@@ -46,6 +48,14 @@ import ldap
 
 
 logger = _LDAPDBConfig.get_logger()
+
+
+def classorinstancemethod(f):
+    class wrapper(object):
+        @wraps(f)
+        def __get__(self, instance, owner):
+            return partial(f, instance or owner)
+    return wrapper()
 
 
 class Model(django.db.models.base.Model):
@@ -72,7 +82,8 @@ class Model(django.db.models.base.Model):
                  or router.db_for_write(self.__class__, instance=self))
         return connections[using]
 
-    def bind_as(self, alias, dn=None, password=None):
+    @classorinstancemethod
+    def bind_as(self, alias, dn=None, password=None, **kwargs):
         """
         Return the database object using connection bound to another
         LDAP user (defaults to self).
@@ -80,13 +91,22 @@ class Model(django.db.models.base.Model):
         Alias specifies the database alias to use. If the database does
         not exist, a new one will be created. If dn is provided,
         the new connection will use that DN. Otherwise, it will be bound
-        to self.build_dn().
+        to self.build_dn(**kwargs).
+
+        This method affects only future database operations. When called
+        on a model instance, it will not update the retrieved data.
+        To retrieve information with increased privileges, call
+        bind_as() on the class before accessing .objects.
         """
         if alias not in settings.DATABASES:
-            base_alias = router.db_for_write(self.__class__,
-                                             instance=self)
+            if isinstance(self, Model):
+                base_alias = router.db_for_write(self.__class__,
+                                                 instance=self)
+            else:
+                base_alias = router.db_for_write(self)
+
             if dn is None:
-                dn = self.build_dn()
+                dn = self.build_dn(**kwargs)
 
             new_db = copy.deepcopy(settings.DATABASES[base_alias])
             new_db['USER'] = dn
@@ -97,7 +117,7 @@ class Model(django.db.models.base.Model):
         ret.bound_alias = alias
         return ret
 
-    @classmethod
+    @classorinstancemethod
     def build_rdn(self, **keys):
         """
         Build the Relative Distinguished Name for this entry.
@@ -114,13 +134,15 @@ class Model(django.db.models.base.Model):
                 bits.append("%s=%s" % (field.db_column,
                                        keys[field.name]))
             elif field.primary_key:
+                if not isinstance(self, Model):
+                    raise TypeError("All keys must be specified when called on a class")
                 bits.append("%s=%s" % (field.db_column,
                                        getattr(self, field.name)))
         if not len(bits):
             raise Exception("Could not build Distinguished Name")
         return '+'.join(bits)
 
-    @classmethod
+    @classorinstancemethod
     def build_dn(self, **keys):
         """
         Build the Distinguished Name for this entry.
