@@ -68,23 +68,35 @@ class Model(django.db.models.base.Model):
         using = using or router.db_for_write(self.__class__, instance=self)
         return connections[using]
 
-    def build_rdn(self):
+    @classmethod
+    def build_rdn(self, **keys):
         """
         Build the Relative Distinguished Name for this entry.
+
+        When called as a class function, values for all the keys
+        need to be provided. Otherwise, they will be obtained
+        from the model.
         """
         bits = []
         for field in self._meta.fields:
-            if field.db_column and field.primary_key:
-                bits.append("%s=%s" % (field.db_column, getattr(self, field.name)))
+            if not field.db_column:
+                continue
+            elif field.name in keys:
+                bits.append("%s=%s" % (field.db_column,
+                                       keys[field.name]))
+            elif field.primary_key:
+                bits.append("%s=%s" % (field.db_column,
+                                       getattr(self, field.name)))
         if not len(bits):
             raise Exception("Could not build Distinguished Name")
         return '+'.join(bits)
 
-    def build_dn(self):
+    @classmethod
+    def build_dn(self, **keys):
         """
         Build the Distinguished Name for this entry.
         """
-        return "%s,%s" % (self.build_rdn(), self.base_dn)
+        return "%s,%s" % (self.build_rdn(**keys), self.base_dn)
         raise Exception("Could not build Distinguished Name")
 
     def delete(self, using=None):
