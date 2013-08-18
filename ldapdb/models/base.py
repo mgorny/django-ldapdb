@@ -95,13 +95,15 @@ class Model(django.db.models.base.Model):
         """
         if alias not in settings.DATABASES:
             base_alias = router.db_for_write(base_class)
-            if dn is None:
-                dn = base_class.build_dn(**kwargs)
-
             new_db = copy.deepcopy(settings.DATABASES[base_alias])
-            new_db['USER'] = dn
-            new_db['PASSWORD'] = password or ''
             settings.DATABASES[alias] = new_db
+        else:
+            new_db = settings.DATABASES[alias]
+
+        if dn is None:
+            dn = base_class.build_dn(**kwargs)
+        new_db['USER'] = dn
+        new_db['PASSWORD'] = password or ''
 
         class Meta:
             proxy = True
