@@ -82,40 +82,36 @@ class Model(django.db.models.base.Model):
                  or router.db_for_write(self.__class__, instance=self))
         return connections[using]
 
-    @classorinstancemethod
-    def bind_as(self, alias, dn=None, password=None, **kwargs):
+    @classmethod
+    def bind_as(base_class, alias, dn=None, password=None, **kwargs):
         """
-        Return the database object using connection bound to another
-        LDAP user (defaults to self).
+        Return the database class wrapped to use connection bound
+        to another LDAP user.
 
         Alias specifies the database alias to use. If the database does
         not exist, a new one will be created. If dn is provided,
         the new connection will use that DN. Otherwise, it will be bound
         to self.build_dn(**kwargs).
-
-        This method affects only future database operations. When called
-        on a model instance, it will not update the retrieved data.
-        To retrieve information with increased privileges, call
-        bind_as() on the class before accessing .objects.
         """
         if alias not in settings.DATABASES:
-            if isinstance(self, Model):
-                base_alias = router.db_for_write(self.__class__,
-                                                 instance=self)
-            else:
-                base_alias = router.db_for_write(self)
-
+            base_alias = router.db_for_write(base_class)
             if dn is None:
-                dn = self.build_dn(**kwargs)
+                dn = base_class.build_dn(**kwargs)
 
             new_db = copy.deepcopy(settings.DATABASES[base_alias])
             new_db['USER'] = dn
             new_db['PASSWORD'] = password or ''
             settings.DATABASES[alias] = new_db
 
-        ret = copy.deepcopy(self)
-        ret.bound_alias = alias
-        return ret
+        class Meta:
+            proxy = True
+        name = "%s_%s" % (base_class.__name__, str(alias))
+        new_class = type(name, (base_class,), {
+            'bound_alias': alias,
+            '__module__': base_class.__module__,
+            'Meta': Meta,
+        })
+        return new_class
 
     @classorinstancemethod
     def build_rdn(self, **keys):
