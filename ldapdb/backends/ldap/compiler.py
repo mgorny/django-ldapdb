@@ -37,6 +37,8 @@ import ldap
 from django.db.models.sql import aggregates, compiler
 from django.db.models.sql.where import AND, OR
 
+from ldapdb.models.fields import Negated
+
 def get_lookup_operator(lookup_type):
     if lookup_type == 'gte':
         return '>='
@@ -66,6 +68,8 @@ def where_as_ldap(self):
             clause = '(|%s)' % ''.join(equal_bits)
         else:
             clause = "(%s%s%s)" % (constraint.col, comp, values)
+            if isinstance(values, Negated):
+                clause = "(!%s)" % clause
 
         bits.append(clause)
 
