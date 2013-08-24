@@ -355,6 +355,7 @@ class ScopedTestCase(TestCase):
         self.assertEquals(g2.name, u'scopedgroup')
         self.assertEquals(g2.gid, 5000)
 
+
 class AdminTestCase(TestCase):
     fixtures = ['test_users.json']
 
@@ -396,25 +397,26 @@ class AdminTestCase(TestCase):
     def test_group_detail(self):
         response = self.client.get('/admin/examples/ldapgroup/foogroup/')
         self.assertContains(response, "foogroup")
-        self.assertContains(response, "1000")
+        self.assertContains(response, "1001")
 
     def test_group_add(self):
-        response = self.client.post('/admin/examples/ldapgroup/add/', {'gid': '1002', 'name': 'wizgroup'})
+        response = self.client.post('/admin/examples/ldapgroup/add/', {'gid': '1003', 'name': 'newgroup'})
         self.assertRedirects(response, '/admin/examples/ldapgroup/')
         qs = LdapGroup.objects.all()
-        self.assertEquals(qs.count(), 3)
+        self.assertEquals(qs.count(), 4)
 
     def test_group_delete(self):
         response = self.client.post('/admin/examples/ldapgroup/foogroup/delete/', {'yes': 'post'})
         self.assertRedirects(response, '/admin/examples/ldapgroup/')
         qs = LdapGroup.objects.all()
-        self.assertEquals(qs.count(), 1)
+        self.assertEquals(qs.count(), 2)
 
     def test_group_search(self):
+        self.ldapobj.search_s.seed("ou=groups,dc=nodomain", 2, "(&(objectClass=posixGroup)(cn=*foo*))")([foogroup])
         response = self.client.get('/admin/examples/ldapgroup/?q=foo')
         self.assertContains(response, "Ldap groups")
         self.assertContains(response, "foogroup")
-        self.assertContains(response, "1000")
+        self.assertContains(response, "1001")
 
     def test_user_list(self):
         response = self.client.get('/admin/examples/ldapuser/')
