@@ -32,68 +32,55 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-from django.db import connections, router
+from django.conf import settings
 from django.db.models import Q
 from django.test import TestCase
-
-import ldap
 
 from ldapdb.backends.ldap.compiler import query_as_ldap
 from examples.models import LdapUser, LdapGroup
 
-class BaseTestCase(TestCase):
-    def _add_base_dn(self, model):
-        using = router.db_for_write(model)
-        connection = connections[using]
+from mockldap import MockLdap
 
-        rdn = model.base_dn.split(',')[0]
-        key, val = rdn.split('=')
-        attrs = [('objectClass', ['top', 'organizationalUnit']), (key, [val])]
-        try:
-            connection.add_s(model.base_dn, attrs)
-        except ldap.ALREADY_EXISTS:
-            pass
+manager = ('cn=admin,dc=nodomain', {'userPassword': ['test']})
+groups = ('ou=groups,dc=nodomain', {
+    'objectClass': ['top', 'organizationalUnit'], 'ou': ['groups']})
+people = ('ou=people,dc=nodomain', {
+    'objectClass': ['top', 'organizationalUnit'], 'ou': ['groups']})
+bargroup = ('cn=bargroup,ou=groups,dc=nodomain', {
+    'objectClass': ['posixGroup'], 'memberUid': ['zoouser', 'baruser'],
+    'gidNumber': ['1000'], 'cn': ['bargroup']})
+foogroup = ('cn=foogroup,ou=groups,dc=nodomain', {
+    'objectClass': ['posixGroup'], 'memberUid': ['foouser', 'baruser'],
+    'gidNumber': ['1001'], 'cn': ['foogroup']})
+wizgroup = ('cn=wizgroup,ou=groups,dc=nodomain', {
+    'objectClass': ['posixGroup'], 'memberUid': ['wizuser', 'baruser'],
+    'gidNumber': ['1002'], 'cn': ['wizgroup']})
+foouser = ('uid=foouser,ou=people,dc=nodomain', {
+    'cn': ['F\xc3\xb4o Us\xc3\xa9r'],
+    'objectClass': ['posixAccount', 'shadowAccount', 'inetOrgPerson'],
+    'loginShell': ['/bin/bash'],
+    'jpegPhoto': ['\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xfe\x00\x1cCreated with GIMP on a Mac\xff\xdb\x00C\x00\x05\x03\x04\x04\x04\x03\x05\x04\x04\x04\x05\x05\x05\x06\x07\x0c\x08\x07\x07\x07\x07\x0f\x0b\x0b\t\x0c\x11\x0f\x12\x12\x11\x0f\x11\x11\x13\x16\x1c\x17\x13\x14\x1a\x15\x11\x11\x18!\x18\x1a\x1d\x1d\x1f\x1f\x1f\x13\x17"$"\x1e$\x1c\x1e\x1f\x1e\xff\xdb\x00C\x01\x05\x05\x05\x07\x06\x07\x0e\x08\x08\x0e\x1e\x14\x11\x14\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\xff\xc0\x00\x11\x08\x00\x08\x00\x08\x03\x01"\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x15\x00\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4\x00\x19\x10\x00\x03\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x06\x11A\xff\xc4\x00\x14\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xc4\x00\x14\x11\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\x9d\xf29wU5Q\xd6\xfd\x00\x01\xff\xd9'],
+    'uidNumber': ['2000'], 'gidNumber': ['1000'], 'sn': ['Us\xc3\xa9r'],
+    'homeDirectory': ['/home/foouser'], 'givenName': ['F\xc3\xb4o'],
+    'uid': ['foouser']})
+scopedgroup = ('cn=scopedgroup,ou=contacts,ou=groups,dc=nodomain', {
+    'objectClass': ['posixGroup'], 'gidNumber': ['5000'],
+    'cn': ['scopedgroup']})
 
-    def _remove_base_dn(self, model):
-        using = router.db_for_write(model)
-        connection = connections[using]
+directory = dict([manager, groups, people, bargroup, foogroup, wizgroup, foouser])
 
-        try:
-            results = connection.search_s(model.base_dn, ldap.SCOPE_SUBTREE)
-            for dn, attrs in reversed(results):
-                connection.delete_s(dn)
-        except ldap.NO_SUCH_OBJECT:
-            pass
+
+class GroupTestCase(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mockldap = MockLdap(directory)
 
     def setUp(self):
-        for model in [LdapGroup, LdapUser]:
-            self._add_base_dn(model)
+        self.mockldap.start()
+        self.ldapobj = self.mockldap[settings.DATABASES['ldap']['NAME']]
 
     def tearDown(self):
-        for model in [LdapGroup, LdapUser]:
-            self._remove_base_dn(model)
-
-class GroupTestCase(BaseTestCase):
-    def setUp(self):
-        super(GroupTestCase, self).setUp()
-
-        g = LdapGroup()
-        g.name = "foogroup"
-        g.gid = 1000
-        g.usernames = ['foouser', 'baruser']
-        g.save()
-
-        g = LdapGroup()
-        g.name = "bargroup"
-        g.gid = 1001
-        g.usernames = ['zoouser', 'baruser']
-        g.save()
-
-        g = LdapGroup()
-        g.name = "wizgroup"
-        g.gid = 1002
-        g.usernames = ['wizuser', 'baruser']
-        g.save()
+        self.mockldap.stop()
 
     def test_count(self):
         # empty query
@@ -153,7 +140,7 @@ class GroupTestCase(BaseTestCase):
         g = qs[0]
         self.assertEquals(g.dn, 'cn=foogroup,%s' % LdapGroup.base_dn)
         self.assertEquals(g.name, 'foogroup')
-        self.assertEquals(g.gid, 1000)
+        self.assertEquals(g.gid, 1001)
         self.assertEquals(g.usernames, ['foouser', 'baruser'])
 
         # try to filter non-existent entries
@@ -167,7 +154,7 @@ class GroupTestCase(BaseTestCase):
         g = LdapGroup.objects.get(name='foogroup')
         self.assertEquals(g.dn, 'cn=foogroup,%s' % LdapGroup.base_dn)
         self.assertEquals(g.name, 'foogroup')
-        self.assertEquals(g.gid, 1000)
+        self.assertEquals(g.gid, 1001)
         self.assertEquals(g.usernames, ['foouser', 'baruser'])
 
         # try to get a non-existent entry
@@ -274,15 +261,15 @@ class GroupTestCase(BaseTestCase):
     def test_values(self):
         qs = LdapGroup.objects.values('name')
         self.assertEquals(len(qs), 3)
-        self.assertEquals(qs[0], {'name': 'foogroup'})
-        self.assertEquals(qs[1], {'name': 'bargroup'})
+        self.assertEquals(qs[0], {'name': 'bargroup'})
+        self.assertEquals(qs[1], {'name': 'foogroup'})
         self.assertEquals(qs[2], {'name': 'wizgroup'})
 
     def test_values_list(self):
         qs = LdapGroup.objects.values_list('name')
         self.assertEquals(len(qs), 3)
-        self.assertEquals(qs[0], ('foogroup',))
-        self.assertEquals(qs[1], ('bargroup',))
+        self.assertEquals(qs[0], ('bargroup',))
+        self.assertEquals(qs[1], ('foogroup',))
         self.assertEquals(qs[2], ('wizgroup',))
 
     def test_delete(self):
@@ -292,21 +279,18 @@ class GroupTestCase(BaseTestCase):
         qs = LdapGroup.objects.all()
         self.assertEquals(len(qs), 2)
 
-class UserTestCase(BaseTestCase):
+
+class UserTestCase(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mockldap = MockLdap(directory)
+
     def setUp(self):
-        super(UserTestCase, self).setUp()
+        self.mockldap.start()
+        self.ldapobj = self.mockldap[settings.DATABASES['ldap']['NAME']]
 
-        u = LdapUser()
-        u.first_name = u"Fôo"
-        u.last_name = u"Usér"
-        u.full_name = u"Fôo Usér"
-
-        u.group = 1000
-        u.home_directory = "/home/foouser"
-        u.uid = 2000
-        u.username = "foouser"
-        u.photo = '\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xfe\x00\x1cCreated with GIMP on a Mac\xff\xdb\x00C\x00\x05\x03\x04\x04\x04\x03\x05\x04\x04\x04\x05\x05\x05\x06\x07\x0c\x08\x07\x07\x07\x07\x0f\x0b\x0b\t\x0c\x11\x0f\x12\x12\x11\x0f\x11\x11\x13\x16\x1c\x17\x13\x14\x1a\x15\x11\x11\x18!\x18\x1a\x1d\x1d\x1f\x1f\x1f\x13\x17"$"\x1e$\x1c\x1e\x1f\x1e\xff\xdb\x00C\x01\x05\x05\x05\x07\x06\x07\x0e\x08\x08\x0e\x1e\x14\x11\x14\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\x1e\xff\xc0\x00\x11\x08\x00\x08\x00\x08\x03\x01"\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x15\x00\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4\x00\x19\x10\x00\x03\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x06\x11A\xff\xc4\x00\x14\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xc4\x00\x14\x11\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\x9d\xf29wU5Q\xd6\xfd\x00\x01\xff\xd9'
-        u.save()
+    def tearDown(self):
+        self.mockldap.stop()
 
     def test_get(self):
         u = LdapUser.objects.get(username='foouser')
@@ -332,28 +316,25 @@ class UserTestCase(BaseTestCase):
         u.save()
         self.assertEquals(u.dn, 'uid=foouser2,%s' % LdapUser.base_dn)
 
-class ScopedTestCase(BaseTestCase):
-    def setUp(self):
-        super(ScopedTestCase, self).setUp()
 
+class ScopedTestCase(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mockldap = MockLdap(directory)
+
+    def setUp(self):
+        self.mockldap.start()
+        self.ldapobj = self.mockldap[settings.DATABASES['ldap']['NAME']]
         self.scoped_model = LdapGroup.scoped("ou=contacts,%s" % LdapGroup.base_dn)
-        self._add_base_dn(self.scoped_model)
 
     def tearDown(self):
-        self._remove_base_dn(self.scoped_model)
-        super(ScopedTestCase, self).tearDown()
+        self.mockldap.stop()
 
     def test_scope(self):
         ScopedGroup = self.scoped_model
 
-        # create group
-        g = LdapGroup()
-        g.name = "foogroup"
-        g.gid = 1000
-        g.save()
-
         qs = LdapGroup.objects.all()
-        self.assertEquals(qs.count(), 1)
+        self.assertEquals(qs.count(), 3)
 
         qs = ScopedGroup.objects.all()
         self.assertEquals(qs.count(), 0)
@@ -365,7 +346,7 @@ class ScopedTestCase(BaseTestCase):
         g2.save()
 
         qs = LdapGroup.objects.all()
-        self.assertEquals(qs.count(), 2)
+        self.assertEquals(qs.count(), 4)
 
         qs = ScopedGroup.objects.all()
         self.assertEquals(qs.count(), 1)
@@ -374,45 +355,20 @@ class ScopedTestCase(BaseTestCase):
         self.assertEquals(g2.name, u'scopedgroup')
         self.assertEquals(g2.gid, 5000)
 
-class AdminTestCase(BaseTestCase):
+class AdminTestCase(TestCase):
     fixtures = ['test_users.json']
 
+    @classmethod
+    def setUpClass(cls):
+        cls.mockldap = MockLdap(directory)
+
     def setUp(self):
-        super(AdminTestCase, self).setUp()
-
-        g = LdapGroup()
-        g.name = "foogroup"
-        g.gid = 1000
-        g.usernames = ['foouser', 'baruser']
-        g.save()
-
-        g = LdapGroup()
-        g.name = "bargroup"
-        g.gid = 1001
-        g.usernames = ['zoouser', 'baruser']
-        g.save()
-
-        u = LdapUser()
-        u.first_name = "Foo"
-        u.last_name = "User"
-        u.full_name = "Foo User"
-        u.group = 1000
-        u.home_directory = "/home/foouser"
-        u.uid = 2000
-        u.username = "foouser"
-        u.save()
-
-        u = LdapUser()
-        u.first_name = "Bar"
-        u.last_name = "User"
-        u.full_name = "Bar User"
-        u.group = 1001
-        u.home_directory = "/home/baruser"
-        u.uid = 2001
-        u.username = "baruser"
-        u.save()
-
+        self.mockldap.start()
+        self.ldapobj = self.mockldap[settings.DATABASES['ldap']['NAME']]
         self.client.login(username="test_user", password="password")
+
+    def tearDown(self):
+        self.mockldap.stop()
 
     def test_index(self):
         response = self.client.get('/admin/examples/')
@@ -486,4 +442,3 @@ class AdminTestCase(BaseTestCase):
     def test_user_delete(self):
         response = self.client.post('/admin/examples/ldapuser/foouser/delete/', {'yes': 'post'})
         self.assertRedirects(response, '/admin/examples/ldapuser/')
-
