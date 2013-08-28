@@ -214,6 +214,9 @@ class Model(django.db.models.base.Model):
         self.saved_pk = self.pk
         signals.post_save.send(sender=self.__class__, instance=self, created=(not record_exists))
 
+    def exit(self):
+        self._get_connection().unbind()
+
     @classmethod
     def scoped(base_class, base_dn):
         """
