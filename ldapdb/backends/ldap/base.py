@@ -82,7 +82,10 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.settings_dict['SUPPORTS_TRANSACTIONS'] = False
 
     def close(self):
-        pass
+        self.validate_thread_sharing()
+        if self.connection is not None:
+            self.connection.unbind_s()
+            self.connection = None
 
     def _commit(self):
         pass
