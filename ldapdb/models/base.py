@@ -33,29 +33,17 @@
 #
 
 
-from django.conf import settings
 from django.db import connections, router
 from django.db.models import signals
 
 from ldapdb import _LDAPDBConfig
 
-from functools import partial, wraps
-
 import django.db.models
 
-import copy
 import ldap
 
 
 logger = _LDAPDBConfig.get_logger()
-
-
-def classorinstancemethod(f):
-    class wrapper(object):
-        @wraps(f)
-        def __get__(self, instance, owner):
-            return partial(f, instance or owner)
-    return wrapper()
 
 
 class Model(django.db.models.base.Model):
@@ -66,7 +54,6 @@ class Model(django.db.models.base.Model):
 
     # meta-data
     base_dn = None
-    bound_alias = None
     search_scope = ldap.SCOPE_SUBTREE
     object_classes = ['top']
 
@@ -74,87 +61,31 @@ class Model(django.db.models.base.Model):
         super(Model, self).__init__(*args, **kwargs)
         self.saved_pk = self.pk
 
-    def _get_connection(self, using=None):
-        """
-        Get the proper LDAP connection.
-        """
-        using = (using or self.bound_alias
-                 or router.db_for_write(self.__class__, instance=self))
-        return connections[using]
-
-    @classorinstancemethod
-    def bind_as(self, alias, dn=None, password=None, **kwargs):
-        """
-        Return the database object using connection bound to another
-        LDAP user (defaults to self).
-
-        Alias specifies the database alias to use. If the database does
-        not exist, a new one will be created. If dn is provided,
-        the new connection will use that DN. Otherwise, it will be bound
-        to self.build_dn(**kwargs).
-
-        This method affects only future database operations. When called
-        on a model instance, it will not update the retrieved data.
-        To retrieve information with increased privileges, call
-        bind_as() on the class before accessing .objects.
-        """
-        if alias not in settings.DATABASES:
-            if isinstance(self, Model):
-                base_alias = router.db_for_write(self.__class__,
-                                                 instance=self)
-            else:
-                base_alias = router.db_for_write(self)
-
-            if dn is None:
-                dn = self.build_dn(**kwargs)
-
-            new_db = copy.deepcopy(settings.DATABASES[base_alias])
-            new_db['USER'] = dn
-            new_db['PASSWORD'] = password or ''
-            settings.DATABASES[alias] = new_db
-
-        ret = copy.deepcopy(self)
-        ret.bound_alias = alias
-        return ret
-
-    @classorinstancemethod
-    def build_rdn(self, **keys):
+    def build_rdn(self):
         """
         Build the Relative Distinguished Name for this entry.
-
-        When called as a class function, values for all the keys
-        need to be provided. Otherwise, they will be obtained
-        from the model.
         """
         bits = []
         for field in self._meta.fields:
-            if not field.db_column:
-                continue
-            elif field.name in keys:
-                bits.append("%s=%s" % (field.db_column,
-                                       keys[field.name]))
-            elif field.primary_key:
-                if not isinstance(self, Model):
-                    raise TypeError("All keys must be specified when called on a class")
-                bits.append("%s=%s" % (field.db_column,
-                                       getattr(self, field.name)))
+            if field.db_column and field.primary_key:
+                bits.append("%s=%s" % (field.db_column, getattr(self, field.name)))
         if not len(bits):
             raise Exception("Could not build Distinguished Name")
         return '+'.join(bits)
 
-    @classorinstancemethod
-    def build_dn(self, **keys):
+    def build_dn(self):
         """
         Build the Distinguished Name for this entry.
         """
-        return "%s,%s" % (self.build_rdn(**keys), self.base_dn)
+        return "%s,%s" % (self.build_rdn(), self.base_dn)
         raise Exception("Could not build Distinguished Name")
 
     def delete(self, using=None):
         """
         Delete this entry.
         """
-        connection = self._get_connection(using)
+        using = using or router.db_for_write(self.__class__, instance=self)
+        connection = connections[using]
         logger.debug("Deleting LDAP entry %s" % self.dn)
         connection.delete_s(self.dn)
         signals.post_delete.send(sender=self.__class__, instance=self)
@@ -163,7 +94,8 @@ class Model(django.db.models.base.Model):
         """
         Saves the current instance.
         """
-        connection = self._get_connection(using)
+        using = using or router.db_for_write(self.__class__, instance=self)
+        connection = connections[using]
         if not self.dn:
             # create a new entry
             record_exists = False
